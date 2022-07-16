@@ -1,11 +1,8 @@
 use lambda_runtime::{service_fn, LambdaEvent, Error};
 use serde_json::{json, Value};
-
 use lindera::tokenizer::Tokenizer;
 use lindera::LinderaResult;
-
 use std::error::Error as OtherError;
-use std::{env, path, fs, io};
 
 mod nlp;
 use nlp::tf_idf;
@@ -13,11 +10,8 @@ use nlp::tf_idf;
 const STR_PKEY: &str = "nango7_ai_nango_kun";
 
 /// 使用例
-/// 学習時: ./ai_test l
-///          time cargo run l
-/// 予測時: ./ai_test p お店でギター演奏できますか？
-///         time cargo run p お店でギター演奏できますか？
-///         time ./target/release/ai_test2 p イベントの予約できますか？
+/// 学習時: {"mode": "l", "pkey": "nango7_ai_nango_kun"}
+/// 予測時: {"mode": "p", "que_sentence": "お店で楽器は演奏できますか？", "pkey": "nango7_ai_nango_kun"}
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     let func = service_fn(func);
@@ -191,12 +185,6 @@ struct QaData {
     ans_vec: Vec<String>,
 }
 
-impl QaData {
-    fn new(que_vec: Vec<String>, ans_vec: Vec<String>) -> Self {
-        Self { que_vec, ans_vec }
-    }
-}
-
 fn read_csv() -> Result<QaData, Box<dyn OtherError>> {
     let csv_file_path = "input/study_qa1.csv";
     let mut rdr = csv::ReaderBuilder::new()
@@ -271,8 +259,6 @@ fn out_csv(tf_idf_res: tf_idf::TfIdf) -> Result<(), Box<dyn OtherError>> {
     let mut wtr = csv::WriterBuilder::new()
         .quote_style(csv::QuoteStyle::Always)
         .from_path(csv_file_out_path)?;
-
-    // let mut wtr = csv::Writer::from_path(csv_file_out_path)?;
 
     let mut w_vec = vec!["id"];
     let mut w_add_vec: Vec<&str> = tf_idf_res.word_vec.iter().map(|s| s.as_str()).collect();

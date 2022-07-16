@@ -33,12 +33,13 @@ not need(docker-compose run rust bash)
 [(参考リンク)](https://github.com/awslabs/aws-lambda-rust-runtime)  
 
 2. cd target/lambda/nango_qa_api1 
-3. zip lambda.zip bootstrap  
+3. zip -r lambda.zip ./input ./output ./bootstrap  
+  ※inputディレクトリとoutputディレクトリ必要(中身のcsvファイル込みで)
 
 ### ローカルでのデバッグ方法
 bootstrap バイナリが置いてあるディレクトリに移動し、以下のコマンドを入力
 ```
-$ docker run --rm -v "$PWD":/var/task:ro,delegated lambci/lambda:provided handler '{"firstName": "okb"}'
+$ docker run --rm -v "$PWD":/var/task:ro,delegated lambci/lambda:provided handler '{"mode": "p", "que_sentence": "お店で使える楽器は何ですか？", "pkey": "nango7_ai_nango_kun"}'
 ```
 
 ### AWS Lambda 手順
