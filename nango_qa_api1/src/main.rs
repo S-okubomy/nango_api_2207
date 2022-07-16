@@ -1,22 +1,18 @@
 use lambda_runtime::{service_fn, LambdaEvent, Error};
 use serde_json::{json, Value};
-
 use lindera::tokenizer::Tokenizer;
 use lindera::LinderaResult;
-
 use std::error::Error as OtherError;
-use std::{env, path, fs, io};
 
 mod nlp;
 use nlp::tf_idf;
 
-#[tokio::main]
+const STR_PKEY: &str = "nango7_ai_nango_kun";
+
 /// 使用例
-/// 学習時: ./ai_test l
-///          time cargo run l
-/// 予測時: ./ai_test p お店でギター演奏できますか？
-///         time cargo run p お店でギター演奏できますか？
-///         time ./target/release/ai_test2 p イベントの予約できますか？
+/// 学習時: {"mode": "l", "pkey": "nango7_ai_nango_kun"}
+/// 予測時: {"mode": "p", "que_sentence": "お店で楽器は演奏できますか？", "pkey": "nango7_ai_nango_kun"}
+#[tokio::main]
 async fn main() -> Result<(), Error> {
     let func = service_fn(func);
     lambda_runtime::run(func).await?;
@@ -25,22 +21,26 @@ async fn main() -> Result<(), Error> {
 
 async fn func(event: LambdaEvent<Value>) -> Result<Value, Error> {
     let (event, _context) = event.into_parts();
-    // let mode: &str = event["mode"].as_str().unwrap_or("p");
-    // let que_sentence = event["que_sentence"].as_str().unwrap_or("");
-
-
-    // コマンドライン引数を得る
-    // let args: Vec<String> = event;
-    let exec_mode: ExecMode = ExecMode::new(event).unwrap_or_else(|err| {
-        println!("error running init: {}", err);
-        std::process::exit(1);
-    });
-    
-    let res_json: Value = run(exec_mode);
-
-    Ok(res_json)
+    // 入力パラメータを得る
+    let exec_mode: Result<ExecMode, String> = ExecMode::new(event);
+    match exec_mode {
+        Err(error) => {
+            let message = format!("error running init: {}", error);
+            let res_err_json: Value = json!({
+                "code": 400,
+                "success": false,
+                "message": message,
+            });
+            Ok(res_err_json)
+        },
+        Ok(mode) => {
+            let res_json: Value = run(mode);
+            Ok(res_json)
+        }
+    }
 }
 
+#[derive(Debug)]
 enum ExecMode {
     Learn,
     Predict { que_sentence: String },
@@ -50,6 +50,11 @@ impl ExecMode {
     fn new(event: Value) -> Result<ExecMode, String> {
         let mode: &str = event["mode"].as_str().unwrap_or("");
         let que_sentence = event["que_sentence"].as_str().unwrap_or("");
+        let pkey = event["pkey"].as_str().unwrap_or("");
+
+        if pkey.len() == 0 || pkey != STR_PKEY {
+            return Err("Not executable".to_string());
+        }
 
         match mode {
             "l" => {
@@ -59,7 +64,7 @@ impl ExecMode {
                 if que_sentence.len() > 0 {
                     Ok(ExecMode::Predict { que_sentence: que_sentence.to_string() })
                 } else {
-                    Err("予測時は、p入力後に質問文を入力してください。".to_string())
+                    Err("予測時は、質問文を入力してください。".to_string())
                 }
             },
             _ => {
@@ -68,26 +73,6 @@ impl ExecMode {
         }
     }
 }
-
-// trait 
-
-
-/// 使用例
-/// 学習時: ./ai_test l
-///          time cargo run l
-/// 予測時: ./ai_test p お店でギター演奏できますか？
-///         time cargo run p お店でギター演奏できますか？
-///         time ./target/release/ai_test2 p イベントの予約できますか？
-// fn main() -> LinderaResult<()> {
-//     // コマンドライン引数を得る
-//     let args: Vec<String> = env::args().collect();
-//     let exec_mode: ExecMode = ExecMode::new(&args).unwrap_or_else(|err| {
-//         println!("error running read: {}", err);
-//         std::process::exit(1);
-//     });
-//     run(exec_mode);
-//     Ok(())
-// }
 
 fn run(mode: ExecMode) -> Value {
     match mode {
@@ -153,7 +138,6 @@ fn predict(que_sentence: String) -> Value {
 
 
 fn make_json(que_sentence: String, qa_data: QaData, ans_vec: Vec<(usize, f64)>) -> Value {
-
     let mut qa_infos: Vec<Value> = Vec::new();
     for (id, cos_val) in ans_vec {
         if cos_val > 0.3 {
@@ -199,12 +183,6 @@ fn get_tokenizer(doc: String) -> LinderaResult<Vec<String>> {
 struct QaData {
     que_vec: Vec<String>,
     ans_vec: Vec<String>,
-}
-
-impl QaData {
-    fn new(que_vec: Vec<String>, ans_vec: Vec<String>) -> Self {
-        Self { que_vec, ans_vec }
-    }
 }
 
 fn read_csv() -> Result<QaData, Box<dyn OtherError>> {
@@ -282,8 +260,6 @@ fn out_csv(tf_idf_res: tf_idf::TfIdf) -> Result<(), Box<dyn OtherError>> {
         .quote_style(csv::QuoteStyle::Always)
         .from_path(csv_file_out_path)?;
 
-    // let mut wtr = csv::Writer::from_path(csv_file_out_path)?;
-
     let mut w_vec = vec!["id"];
     let mut w_add_vec: Vec<&str> = tf_idf_res.word_vec.iter().map(|s| s.as_str()).collect();
     w_vec.append(&mut w_add_vec);
@@ -314,4 +290,155 @@ fn out_csv_word(docs: &Vec<Vec<String>>) -> Result<(), Box<dyn OtherError>> {
 
     wtr.flush()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn learn_test1() {
+        let res = learn();
+        // println!("{:?}", res.to_string());
+        let exp: Value = json!({
+            "code": 200,
+            "success": true,
+            "mode": "learn",
+        });
+        assert_eq!(res, exp);
+    }
+
+    #[test]
+    fn predict_test1() {
+        let que_sentence: String = "おすすめのメニュー教えてください。".to_string();
+        let res = predict(que_sentence.to_owned());
+        // println!("{} {} {}", res["code"], res["mode"], res["payload"]["qa_infos"][0]);
+        let tmp_res_vec: Vec<String> = vec![&res["code"], &res["mode"], &res["payload"]["qa_infos"][0]["que"]]
+            .into_iter().map(|v| v.to_string() ).collect();
+        let res_vec: Vec<&str> = tmp_res_vec.iter().map(|s| s.as_str()).collect();
+        let exp_que: String = "\"".to_string() + &que_sentence.as_str() + "\"";
+        let exp_vec = vec!["200", "\"predict\"", exp_que.as_str()];
+        assert_eq!(res_vec, exp_vec);
+    }
+
+    #[test]
+    fn init_pkey_test1() {
+        let event: Value = json!({
+            "mode": "l", // pkeyがない場合にエラーとなるか確認
+        });
+        let res = ExecMode::new(event);
+        match res {
+            Err(error) => {
+                assert_eq!(error, "Not executable".to_string());
+            },
+            Ok(_) => {
+                assert!(false);
+            }
+        }
+    }
+
+    #[test]
+    fn init_pkey_test2() {
+        let event: Value = json!({
+            "mode": "l",
+            "pkey": "" // pkeyが不正な場合(空)、エラーとなるか確認
+        });
+        let res = ExecMode::new(event);
+        match res {
+            Err(error) => {
+                assert_eq!(error, "Not executable".to_string());
+            },
+            Ok(_) => {
+                assert!(false);
+            }
+        }
+    }
+
+    #[test]
+    fn init_pkey_test3() {
+        let event: Value = json!({
+            "mode": "l",
+            "pkey": "abc" // pkeyが不正な場合(間違い)、エラーとなるか確認
+        });
+        let res = ExecMode::new(event);
+        match res {
+            Err(error) => {
+                assert_eq!(error, "Not executable".to_string());
+            },
+            Ok(_) => {
+                assert!(false);
+            }
+        }
+    }
+
+    #[test]
+    fn init_test1() {
+        let event: Value = json!({
+            "mode": "x", // 不正なモードでエラーとなるか確認
+            "pkey": "nango7_ai_nango_kun"
+        });
+        let res = ExecMode::new(event);
+        match res {
+            Err(error) => {
+                assert_eq!(error, "学習: l、予測: p を指定してください。".to_string());
+            },
+            Ok(_) => {
+                assert!(false);
+            }
+        }
+    }
+
+    #[test]
+    fn init_test2() {
+        let event: Value = json!({
+            "mode": "l", // 学習モードで処理実行されるか確認
+            "pkey": "nango7_ai_nango_kun",
+        });
+        let res = ExecMode::new(event);
+        match res {
+            Err(_) => {
+                assert!(false);
+            },
+            Ok(_) => {
+                assert!(true);
+            }
+        }
+    }
+
+    #[test]
+    fn init_test3() {
+        let event: Value = json!({
+            "mode": "p", // 類推モードで処理実行されるか確認
+            "que_sentence": "お店で楽器は演奏できますか？",
+            "pkey": "nango7_ai_nango_kun",
+        });
+        let res = ExecMode::new(event);
+        match res {
+            Err(_) => {
+                assert!(false);
+            },
+            Ok(_) => {
+                assert!(true);
+            }
+        }
+    }
+
+    #[test]
+    fn init_test4() {
+        let event: Value = json!({
+            "mode": "p", // 類推モードで処理実行されるか確認
+            "que_sentence": "", // 質問文が未入力時にエラーとなるか確認
+            "pkey": "nango7_ai_nango_kun",
+        });
+        let res = ExecMode::new(event);
+        match res {
+            Err(error) => {
+                assert_eq!(error, "予測時は、質問文を入力してください。".to_string());
+            },
+            Ok(_) => {
+                assert!(false);
+            }
+        }
+    }
+
 }
