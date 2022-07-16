@@ -14,6 +14,12 @@
 2. cd testHello1/
 3. cargo run
 
+### テストの実行方法
+```
+cargo test
+cargo test -- --nocapture  #標準出力をコンソールに出したい時
+```
+
 ### binファイル作成
 cargo build --release
 

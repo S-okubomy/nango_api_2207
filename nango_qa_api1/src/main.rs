@@ -41,6 +41,7 @@ async fn func(event: LambdaEvent<Value>) -> Result<Value, Error> {
     Ok(res_json)
 }
 
+#[derive(Debug)]
 enum ExecMode {
     Learn,
     Predict { que_sentence: String },
@@ -59,7 +60,7 @@ impl ExecMode {
                 if que_sentence.len() > 0 {
                     Ok(ExecMode::Predict { que_sentence: que_sentence.to_string() })
                 } else {
-                    Err("予測時は、p入力後に質問文を入力してください。".to_string())
+                    Err("予測時は、質問文を入力してください。".to_string())
                 }
             },
             _ => {
@@ -68,26 +69,6 @@ impl ExecMode {
         }
     }
 }
-
-// trait 
-
-
-/// 使用例
-/// 学習時: ./ai_test l
-///          time cargo run l
-/// 予測時: ./ai_test p お店でギター演奏できますか？
-///         time cargo run p お店でギター演奏できますか？
-///         time ./target/release/ai_test2 p イベントの予約できますか？
-// fn main() -> LinderaResult<()> {
-//     // コマンドライン引数を得る
-//     let args: Vec<String> = env::args().collect();
-//     let exec_mode: ExecMode = ExecMode::new(&args).unwrap_or_else(|err| {
-//         println!("error running read: {}", err);
-//         std::process::exit(1);
-//     });
-//     run(exec_mode);
-//     Ok(())
-// }
 
 fn run(mode: ExecMode) -> Value {
     match mode {
@@ -153,7 +134,6 @@ fn predict(que_sentence: String) -> Value {
 
 
 fn make_json(que_sentence: String, qa_data: QaData, ans_vec: Vec<(usize, f64)>) -> Value {
-
     let mut qa_infos: Vec<Value> = Vec::new();
     for (id, cos_val) in ans_vec {
         if cos_val > 0.3 {
@@ -314,4 +294,101 @@ fn out_csv_word(docs: &Vec<Vec<String>>) -> Result<(), Box<dyn OtherError>> {
 
     wtr.flush()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn learn_test1() {
+        let res = learn();
+        // println!("{:?}", res.to_string());
+        let exp: Value = json!({
+            "code": 200,
+            "success": true,
+            "mode": "learn",
+        });
+        assert_eq!(res, exp);
+    }
+
+    #[test]
+    fn predict_test1() {
+        let que_sentence: String = "おすすめのメニュー教えてください。".to_string();
+        let res = predict(que_sentence.to_owned());
+        // println!("{} {} {}", res["code"], res["mode"], res["payload"]["qa_infos"][0]);
+        let tmp_res_vec: Vec<String> = vec![&res["code"], &res["mode"], &res["payload"]["qa_infos"][0]["que"]]
+            .into_iter().map(|v| v.to_string() ).collect();
+        let res_vec: Vec<&str> = tmp_res_vec.iter().map(|s| s.as_str()).collect();
+        let exp_que: String = "\"".to_string() + &que_sentence.as_str() + "\"";
+        let exp_vec = vec!["200", "\"predict\"", exp_que.as_str()];
+        assert_eq!(res_vec, exp_vec);
+    }
+
+    #[test]
+    fn init_test1() {
+        let event: Value = json!({
+            "mode": "x", // 不正なモードでエラーとなるか確認
+        });
+        let res = ExecMode::new(event);
+        match res {
+            Err(error) => {
+                assert_eq!(error, "学習: l、予測: p を指定してください。".to_string());
+            },
+            Ok(_) => {
+                assert!(false);
+            }
+        }
+    }
+
+    #[test]
+    fn init_test2() {
+        let event: Value = json!({
+            "mode": "l", // 学習モードで処理実行されるか確認
+        });
+        let res = ExecMode::new(event);
+        match res {
+            Err(_) => {
+                assert!(false);
+            },
+            Ok(_) => {
+                assert!(true);
+            }
+        }
+    }
+
+    #[test]
+    fn init_test3() {
+        let event: Value = json!({
+            "mode": "p", // 類推モードで処理実行されるか確認
+            "que_sentence": "お店で楽器は演奏できますか？"
+        });
+        let res = ExecMode::new(event);
+        match res {
+            Err(_) => {
+                assert!(false);
+            },
+            Ok(_) => {
+                assert!(true);
+            }
+        }
+    }
+
+    #[test]
+    fn init_test4() {
+        let event: Value = json!({
+            "mode": "p", // 類推モードで処理実行されるか確認
+            "que_sentence": "" // 質問文が未入力時にエラーとなるか確認
+        });
+        let res = ExecMode::new(event);
+        match res {
+            Err(error) => {
+                assert_eq!(error, "予測時は、質問文を入力してください。".to_string());
+            },
+            Ok(_) => {
+                assert!(false);
+            }
+        }
+    }
+
 }
