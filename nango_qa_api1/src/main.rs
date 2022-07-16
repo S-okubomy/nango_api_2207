@@ -10,13 +10,15 @@ use std::{env, path, fs, io};
 mod nlp;
 use nlp::tf_idf;
 
-#[tokio::main]
+const STR_PKEY: &str = "nango7_ai_nango_kun";
+
 /// 使用例
 /// 学習時: ./ai_test l
 ///          time cargo run l
 /// 予測時: ./ai_test p お店でギター演奏できますか？
 ///         time cargo run p お店でギター演奏できますか？
 ///         time ./target/release/ai_test2 p イベントの予約できますか？
+#[tokio::main]
 async fn main() -> Result<(), Error> {
     let func = service_fn(func);
     lambda_runtime::run(func).await?;
@@ -25,20 +27,23 @@ async fn main() -> Result<(), Error> {
 
 async fn func(event: LambdaEvent<Value>) -> Result<Value, Error> {
     let (event, _context) = event.into_parts();
-    // let mode: &str = event["mode"].as_str().unwrap_or("p");
-    // let que_sentence = event["que_sentence"].as_str().unwrap_or("");
-
-
-    // コマンドライン引数を得る
-    // let args: Vec<String> = event;
-    let exec_mode: ExecMode = ExecMode::new(event).unwrap_or_else(|err| {
-        println!("error running init: {}", err);
-        std::process::exit(1);
-    });
-    
-    let res_json: Value = run(exec_mode);
-
-    Ok(res_json)
+    // 入力パラメータを得る
+    let exec_mode: Result<ExecMode, String> = ExecMode::new(event);
+    match exec_mode {
+        Err(error) => {
+            let message = format!("error running init: {}", error);
+            let res_err_json: Value = json!({
+                "code": 400,
+                "success": false,
+                "message": message,
+            });
+            Ok(res_err_json)
+        },
+        Ok(mode) => {
+            let res_json: Value = run(mode);
+            Ok(res_json)
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -51,6 +56,11 @@ impl ExecMode {
     fn new(event: Value) -> Result<ExecMode, String> {
         let mode: &str = event["mode"].as_str().unwrap_or("");
         let que_sentence = event["que_sentence"].as_str().unwrap_or("");
+        let pkey = event["pkey"].as_str().unwrap_or("");
+
+        if pkey.len() == 0 || pkey != STR_PKEY {
+            return Err("Not executable".to_string());
+        }
 
         match mode {
             "l" => {
@@ -326,9 +336,60 @@ mod tests {
     }
 
     #[test]
+    fn init_pkey_test1() {
+        let event: Value = json!({
+            "mode": "l", // pkeyがない場合にエラーとなるか確認
+        });
+        let res = ExecMode::new(event);
+        match res {
+            Err(error) => {
+                assert_eq!(error, "Not executable".to_string());
+            },
+            Ok(_) => {
+                assert!(false);
+            }
+        }
+    }
+
+    #[test]
+    fn init_pkey_test2() {
+        let event: Value = json!({
+            "mode": "l",
+            "pkey": "" // pkeyが不正な場合(空)、エラーとなるか確認
+        });
+        let res = ExecMode::new(event);
+        match res {
+            Err(error) => {
+                assert_eq!(error, "Not executable".to_string());
+            },
+            Ok(_) => {
+                assert!(false);
+            }
+        }
+    }
+
+    #[test]
+    fn init_pkey_test3() {
+        let event: Value = json!({
+            "mode": "l",
+            "pkey": "abc" // pkeyが不正な場合(間違い)、エラーとなるか確認
+        });
+        let res = ExecMode::new(event);
+        match res {
+            Err(error) => {
+                assert_eq!(error, "Not executable".to_string());
+            },
+            Ok(_) => {
+                assert!(false);
+            }
+        }
+    }
+
+    #[test]
     fn init_test1() {
         let event: Value = json!({
             "mode": "x", // 不正なモードでエラーとなるか確認
+            "pkey": "nango7_ai_nango_kun"
         });
         let res = ExecMode::new(event);
         match res {
@@ -345,6 +406,7 @@ mod tests {
     fn init_test2() {
         let event: Value = json!({
             "mode": "l", // 学習モードで処理実行されるか確認
+            "pkey": "nango7_ai_nango_kun",
         });
         let res = ExecMode::new(event);
         match res {
@@ -361,7 +423,8 @@ mod tests {
     fn init_test3() {
         let event: Value = json!({
             "mode": "p", // 類推モードで処理実行されるか確認
-            "que_sentence": "お店で楽器は演奏できますか？"
+            "que_sentence": "お店で楽器は演奏できますか？",
+            "pkey": "nango7_ai_nango_kun",
         });
         let res = ExecMode::new(event);
         match res {
@@ -378,7 +441,8 @@ mod tests {
     fn init_test4() {
         let event: Value = json!({
             "mode": "p", // 類推モードで処理実行されるか確認
-            "que_sentence": "" // 質問文が未入力時にエラーとなるか確認
+            "que_sentence": "", // 質問文が未入力時にエラーとなるか確認
+            "pkey": "nango7_ai_nango_kun",
         });
         let res = ExecMode::new(event);
         match res {
