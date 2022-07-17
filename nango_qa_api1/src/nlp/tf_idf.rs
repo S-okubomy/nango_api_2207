@@ -38,6 +38,7 @@ impl TfIdf {
     }
 }
 
+#[allow(dead_code)]
 fn get_cos_max_id(trg: &Vec<f64>, docs: &Vec<Vec<f64>>) -> (usize, f64) {
     let mut max_id: usize = 0;
     let mut max_cos: f64 = 0.0;
