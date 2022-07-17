@@ -1,8 +1,13 @@
 use lambda_runtime::{service_fn, LambdaEvent, Error};
 use serde_json::{json, Value};
-use lindera::tokenizer::Tokenizer;
-use lindera::LinderaResult;
 use std::error::Error as OtherError;
+
+use std::fs::File;
+use vaporetto::{Model, Predictor, Sentence};
+use vaporetto_rules::{
+    string_filters::KyteaFullwidthFilter, StringFilter,
+};
+
 
 mod nlp;
 use nlp::tf_idf;
@@ -93,7 +98,7 @@ fn learn() -> Value {
 
     let mut docs: Vec<Vec<String>> = Vec::new();
     for input_qa in qa_data.que_vec {
-        let doc_vec: Vec<String> = get_tokenizer(input_qa).unwrap();
+        let doc_vec: Vec<String> = get_tokenizer(input_qa);
         docs.push(doc_vec);
     }
 
@@ -129,7 +134,7 @@ fn predict(que_sentence: String) -> Value {
     });
 
     let tfidf: tf_idf::TfIdf = read_model_csv().unwrap();
-    let trg: Vec<String> = get_tokenizer(que_sentence.to_owned()).unwrap();
+    let trg: Vec<String> = get_tokenizer(que_sentence.to_owned());
     let ans_vec: Vec<(usize, f64)> = tf_idf::TfIdf::predict(tfidf, &docs, &trg);
 
     let res_json: Value = make_json(que_sentence, qa_data, ans_vec);
@@ -161,22 +166,27 @@ fn make_json(que_sentence: String, qa_data: QaData, ans_vec: Vec<(usize, f64)>) 
     res_json
 }
 
+fn get_tokenizer(doc: String) -> Vec<String> {
+    let mut f = zstd::Decoder::new(File::open("./model/bccwj-luw-small.model.zst").unwrap()).unwrap();
+    let model = Model::read(&mut f).unwrap();
+    let predictor = Predictor::new(model, true).unwrap();
 
-fn get_tokenizer(doc: String) -> LinderaResult<Vec<String>> {
-    // create tokenizer
-    let tokenizer = Tokenizer::new()?;
-
-    // tokenize the text
-    let tokens = tokenizer.tokenize(doc.as_str())?;
-
+    let pre_filters: Vec<Box<dyn StringFilter<String>>> = vec![
+        Box::new(KyteaFullwidthFilter),
+    ];
+    
+    let preproc_input = pre_filters.iter().fold(doc, |s, filter| filter.filter(s));
+    
+    let mut sentence = Sentence::from_raw(preproc_input).unwrap();
+    predictor.predict(&mut sentence);
+    
+    let mut buf = String::new();
+    sentence.write_tokenized_text(&mut buf);
     // output the tokens
-    let mut docs: Vec<String> = Vec::new();
-    for token in tokens {
-        docs.push(token.text.to_string());
-        // println!("{}", token.text);
-    }
+    let docs: Vec<String> = buf.split(" ").map(|s| s.to_string()).collect();
+    // println!("{:?}", docs);
 
-    Ok(docs)
+    docs
 }
 
 #[derive(Debug)]

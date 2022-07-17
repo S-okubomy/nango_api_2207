@@ -15,6 +15,7 @@
 3. cargo run
 
 ### テストの実行方法
+※ 学習モデルも作成されるので、後で使う
 ```
 cargo test
 cargo test -- --nocapture  #標準出力をコンソールに出したい時
@@ -33,7 +34,7 @@ not need(docker-compose run rust bash)
 [(参考リンク)](https://github.com/awslabs/aws-lambda-rust-runtime)  
 
 2. cd target/lambda/nango_qa_api1 
-3. zip -r lambda.zip ./input ./output ./bootstrap  
+3. zip -r lambda.zip ./*  
   ※inputディレクトリとoutputディレクトリ必要(中身のcsvファイル込みで)
 
 ### ローカルでのデバッグ方法
@@ -44,6 +45,7 @@ $ docker run --rm -v "$PWD":/var/task:ro,delegated lambci/lambda:provided handle
 
 ### AWS Lambda 手順
 [リソースアップ](https://komorinfo.com/blog/rust-aws-lambda/)  
+[S3に資源アップロード](https://pointsandlines.jp/server-infra/aws/lambda-layer-from-s3)  
 [API Gateway](https://tech-cci.io/archives/1399)  
 [クエリパラメータ反映](https://qiita.com/Quantum/items/91ad6b6b788bf4051055)  
 
