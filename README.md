@@ -34,7 +34,8 @@ not need(docker-compose run rust bash)
 [(参考リンク)](https://github.com/awslabs/aws-lambda-rust-runtime)  
 
 2. cd target/lambda/nango_qa_api1 
-3. zip -r lambda.zip ./*  
+3. modelディレクトリ、inputディレクトリ、outputディレクトリをコピー&貼り付け
+4. zip -r lambda.zip ./*  
   ※inputディレクトリとoutputディレクトリ必要(中身のcsvファイル込みで)
 
 ### ローカルでのデバッグ方法
