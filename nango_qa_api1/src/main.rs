@@ -1,4 +1,4 @@
-// use lambda_runtime::{service_fn, LambdaEvent, Error};
+use lambda_runtime::{service_fn, LambdaEvent, Error};
 use serde_json::{json, Value};
 use std::error::Error as OtherError;
 
@@ -8,192 +8,42 @@ use vaporetto_rules::{
     string_filters::KyteaFullwidthFilter, StringFilter,
 };
 
-use std::collections::HashMap;
-
-// use lambda_http::{service_fn, Error, IntoResponse, Request, RequestExt, Response};
-
-use query_map::QueryMap;
-
 
 mod nlp;
 use nlp::tf_idf;
 
 const STR_PKEY: &str = "nango7_ai_nango_kun";
 
+/// 使用例
+/// 学習時: {"mode": "l", "pkey": "nango7_ai_nango_kun"}
+/// 予測時: {"mode": "p", "que_sentence": "お店で楽器は演奏できますか？", "pkey": "nango7_ai_nango_kun"}
+#[tokio::main]
+async fn main() -> Result<(), Error> {
+    let func = service_fn(func);
+    lambda_runtime::run(func).await?;
+    Ok(())
+}
 
-
-use lambda_apigateway_response::{
-    http::StatusCode,
-    types::{
-        Headers,
-        MultiValueHeaders,
-    },
-    Response,
-};
-use lambda_runtime::{
-    Error as LambdaError,
-    LambdaEvent,
-};
-
-
-
-// async fn handler(
-//     event: LambdaEvent<ApiGatewayProxyRequest>,
-// ) -> Result<ApiGatewayProxyResponse, Error> {
-//     let mut headers = HeaderMap::new();
-//     headers.insert("content-type", "text/html".parse().unwrap());
-//     let resp = ApiGatewayProxyResponse {
-//         status_code: 200,
-//         multi_value_headers: headers.clone(),
-//         is_base64_encoded: Some(false),
-//         body: Some("Hello AWS Lambda HTTP request".into()),
-//         headers,
-//     };
-//     Ok(resp)
-// }
-
-// #[tokio::main]
-// async fn main() -> Result<(), Error> {
-//     lambda_runtime::run(service_fn(handler)).await
-// }
-
-
-
-type LambdaResult<T> = Result<T, LambdaError>;
- 
-async fn handler(
-    event: LambdaEvent<serde_json::Value>,
-) -> LambdaResult<Response<serde_json::Value>> {
-    // let res = Response {
-    //     status_code: StatusCode::OK,
-    //     body: json!({
-    //         "message": "Hello world!",
-    //     }),
-    //     headers: Headers::new(),
-    //     multi_value_headers: MultiValueHeaders::new(),
-    //     is_base64_encoded: true,
-    // };
-
-
-    // let (event, _context) = event.into_parts();
+async fn func(event: LambdaEvent<Value>) -> Result<Value, Error> {
+    let (event, _context) = event.into_parts();
     // 入力パラメータを得る
-    // let q_map = _event.query_string_parameters();
-
     let exec_mode: Result<ExecMode, String> = ExecMode::new(event);
     match exec_mode {
         Err(error) => {
             let message = format!("error running init: {}", error);
             let res_err_json: Value = json!({
+                "code": 400,
                 "success": false,
                 "message": message,
             });
-
-            // let mut headers = Headers::new();
-            // headers.insert("content-type".to_string(), "application/json".parse().unwrap());
-            // headers.insert("Access-Control-Allow-Methods".to_string(), "OPTIONS,POST,GET".parse().unwrap());
-            // headers.insert("Access-Control-Allow-Credential".to_string(), "true".parse().unwrap());
-            // headers.insert("Access-Control-Allow-Origin".to_string(), "*".parse().unwrap());
-
-            let res = Response {
-                status_code: StatusCode::BAD_REQUEST,
-                body: res_err_json,
-                headers: get_Header(),
-                multi_value_headers: MultiValueHeaders::new(),
-                is_base64_encoded: true,
-            };
-            Ok(res)
-
-
+            Ok(res_err_json)
         },
         Ok(mode) => {
             let res_json: Value = run(mode);
-            // let mut headers = Headers::new();
-            // headers.insert("content-type".to_string(), "text/html".parse().unwrap());
-
-            let res = Response {
-                status_code: StatusCode::OK,
-                body: res_json,
-                headers: get_Header(),
-                multi_value_headers: MultiValueHeaders::new(),
-                is_base64_encoded: true,
-            };
-
-            Ok(res)
+            Ok(res_json)
         }
     }
-
-
 }
-
-fn get_Header() -> HashMap<String, String> {
-    let mut headers = Headers::new();
-    headers.insert("content-type".to_string(), "application/json".parse().unwrap());
-    headers.insert("Access-Control-Allow-Methods".to_string(), "OPTIONS,POST,GET".parse().unwrap());
-    headers.insert("Access-Control-Allow-Credential".to_string(), "true".parse().unwrap());
-    headers.insert("Access-Control-Allow-Origin".to_string(), "*".parse().unwrap());
-
-    headers
-}
- 
-#[tokio::main]
-async fn main() -> LambdaResult<()> {
-    let handler_fn = lambda_runtime::service_fn(handler);
-    lambda_runtime::run(handler_fn).await?;
- 
-    Ok(())
-}
-
-
-
-
-
-
-/// 使用例
-/// 学習時: {"mode": "l", "pkey": "nango7_ai_nango_kun"}
-/// 予測時: {"mode": "p", "que_sentence": "お店で楽器は演奏できますか？", "pkey": "nango7_ai_nango_kun"}
-// #[tokio::main]
-// async fn main() -> Result<(), Error> {
-//     lambda_http::run(service_fn(handler)).await
-// }
-
-// async fn handler(event: Request) -> Result<impl IntoResponse, Error> {
-
-//     // let (event, _context) = event.into_parts();
-//     // 入力パラメータを得る
-//     let q_map = event.query_string_parameters();
-
-//     let exec_mode: Result<ExecMode, String> = ExecMode::new(q_map);
-//     match exec_mode {
-//         Err(error) => {
-//             let message = format!("error running init: {}", error);
-//             let res_err_json: Value = json!({
-//                 "code": 400,
-//                 "success": false,
-//                 "message": message,
-//             });
-
-//             let resp = Response::builder()
-//                 .status(400)
-//                 .header("Content-Type", "application/json")
-//                 .body(res_err_json.to_string())
-//                 .map_err(Box::new)?;
-//             Ok(resp)
-//         },
-//         Ok(mode) => {
-//             let res_json: Value = run(mode);
-//             let resp = Response::builder()
-//                 .status(200)
-//                 .header("Content-Type", "application/json")
-//                 .header("Access-Control-Allow-Methods", "OPTIONS,POST,GET")
-//                 .header("Access-Control-Allow-Credential", "true")
-//                 .header("Access-Control-Allow-Origin", "*")
-//                 .body(res_json.to_string())
-//                 .map_err(Box::new)?;
-//             Ok(resp)
-//         }
-//     }
-// }
-
 
 #[derive(Debug)]
 enum ExecMode {
@@ -202,20 +52,10 @@ enum ExecMode {
 }
 
 impl ExecMode {
-    fn new(event: LambdaEvent<serde_json::Value>) -> Result<ExecMode, String> {
-        let (params, _context) = event.into_parts();
-
-        let mode: &str = params["mode"].as_str().unwrap_or("");
-        let que_sentence = params["que_sentence"].as_str().unwrap_or("");
-        let pkey = params["pkey"].as_str().unwrap_or("");
-
-        // let mode: &str = q_map.first("mode").unwrap_or("");
-        // let que_sentence = q_map.first("que_sentence").unwrap_or("");
-        // let pkey = q_map.first("pkey").unwrap_or("");
-
-        // let mode: &str = "p";
-        // let que_sentence = "test";
-        // let pkey = "nango7_ai_nango_kun";
+    fn new(event: Value) -> Result<ExecMode, String> {
+        let mode: &str = event["mode"].as_str().unwrap_or("");
+        let que_sentence = event["que_sentence"].as_str().unwrap_or("");
+        let pkey = event["pkey"].as_str().unwrap_or("");
 
         if pkey.len() == 0 || pkey != STR_PKEY {
             return Err("Not executable".to_string());

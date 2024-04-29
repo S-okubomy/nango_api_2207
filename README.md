@@ -49,6 +49,7 @@ $ docker run --rm -v "$PWD":/var/task:ro,delegated lambci/lambda:provided handle
 [S3に資源アップロード](https://pointsandlines.jp/server-infra/aws/lambda-layer-from-s3)  
 [API Gateway](https://tech-cci.io/archives/1399)  
 [クエリパラメータ反映](https://qiita.com/Quantum/items/91ad6b6b788bf4051055)  
+[cros](https://qiita.com/naoki_koreeda/items/5351f8ab803db655b0b4)
 
 ### Dockerイメージのビルド
 [Rustのtensorflow](https://qiita.com/kyamamoto9120/items/9053ef667e55295e5f3f)
